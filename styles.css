@@ -19,7 +19,7 @@
   position: fixed;
   right: 16px;
   bottom: 16px;
-  width: 320px;
+  width: 330px;
   max-width: calc(100vw - 24px);
   z-index: 2147483647;
   padding: 14px;
@@ -73,11 +73,40 @@
   color: #fb7185;
 }
 
+.speedchat-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.speedchat-stat-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 8px 10px;
+}
+
+.speedchat-stat-card__label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgba(229, 231, 235, 0.72);
+  margin-bottom: 3px;
+}
+
+.speedchat-stat-card__value {
+  font-size: 18px;
+  line-height: 1;
+  color: #ffffff;
+}
+
 .speedchat-switch {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   cursor: pointer;
 }
 
@@ -94,6 +123,7 @@
   border-radius: 999px;
   background: rgba(75, 85, 99, 0.8);
   transition: background-color 150ms ease;
+  flex-shrink: 0;
 }
 
 .speedchat-switch__thumb {
@@ -116,7 +146,7 @@
 }
 
 .speedchat-switch__label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: #f3f4f6;
 }

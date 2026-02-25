@@ -6,6 +6,7 @@
 
   const STORAGE_ENABLED_KEY = 'speedchatEnabled';
   const STORAGE_VISIBLE_MESSAGES_KEY = 'speedchatVisibleMessages';
+  const STORAGE_ULTRA_MODE_KEY = 'speedchatUltraMode';
 
   const HIDDEN_CLASS = 'speedchat-hidden';
   const PANEL_ID = 'speedchat-panel';
@@ -16,68 +17,38 @@
   const CUTOFF_MARKER_ID = 'speedchat-cutoff-marker';
   const TURBO_BUTTON_ID = 'speedchat-turbo-clean';
   const TURBO_INFO_ID = 'speedchat-turbo-info';
+  const ULTRA_TOGGLE_ID = 'speedchat-ultra-toggle';
+  const STATS_RENDERED_ID = 'speedchat-stats-rendered';
+  const STATS_REMOVED_ID = 'speedchat-stats-removed';
 
   let speedModeEnabled = true;
   let visibleMessagesCount = DEFAULT_VISIBLE_MESSAGES;
+  let ultraModeEnabled = false;
   let purgedMessagesCount = 0;
+  let currentRenderedCount = 0;
+
   let rafId = null;
   let debounceTimer = null;
   let observer = null;
   let bodyWaitTimer = null;
+  let suppressObserverUntil = 0;
 
-  const hideOlderMessages = () => {
-    const messages = getMessageBlocks();
-    const existingMarker = document.getElementById(CUTOFF_MARKER_ID);
-
-    if (existingMarker) {
-      existingMarker.remove();
+  const isLikelyMessageNode = (node) => {
+    if (!(node instanceof Element)) {
+      return false;
     }
 
-    if (!messages.length) {
-      return;
+    if (node.id === PANEL_ID || node.id === CUTOFF_MARKER_ID || node.closest(`#${PANEL_ID}`)) {
+      return false;
     }
 
-    const keepFrom = Math.max(messages.length - visibleMessagesCount, 0);
-
-    for (let i = 0; i < messages.length; i += 1) {
-      if (speedModeEnabled && i < keepFrom) {
-        messages[i].classList.add(HIDDEN_CLASS);
-      } else {
-        messages[i].classList.remove(HIDDEN_CLASS);
-      }
+    if (
+      node.matches('article, article *, [data-message-author-role], [data-testid*="conversation"], [data-testid*="message"]')
+    ) {
+      return true;
     }
 
-    if (!speedModeEnabled || keepFrom <= 0) {
-      return;
-    }
-
-    const firstVisibleMessage = messages[keepFrom];
-
-    if (!firstVisibleMessage || !firstVisibleMessage.parentElement) {
-      return;
-    }
-
-    const marker = document.createElement('div');
-    marker.id = CUTOFF_MARKER_ID;
-    marker.className = 'speedchat-cutoff-marker';
-    marker.textContent = `⚡ SpeedChat ocultou ${keepFrom} mensagens anteriores`;
-    firstVisibleMessage.parentElement.insertBefore(marker, firstVisibleMessage);
-  };
-
-  const scheduleUpdate = () => {
-    if (debounceTimer) {
-      window.clearTimeout(debounceTimer);
-    }
-
-    debounceTimer = window.setTimeout(() => {
-      if (rafId) {
-        window.cancelAnimationFrame(rafId);
-      }
-
-      rafId = window.requestAnimationFrame(() => {
-        hideOlderMessages();
-      });
-    }, 100);
+    return Boolean(node.querySelector('article, [data-message-author-role], [data-testid*="conversation"], [data-testid*="message"]'));
   };
 
   const getMessageBlocks = () => {
@@ -112,8 +83,11 @@
     const rangeInput = panel.querySelector(`#${RANGE_INPUT_ID}`);
     const rangeValue = panel.querySelector(`#${RANGE_VALUE_ID}`);
     const toggleInput = panel.querySelector(`#${TOGGLE_INPUT_ID}`);
+    const ultraToggle = panel.querySelector(`#${ULTRA_TOGGLE_ID}`);
     const turboButton = panel.querySelector(`#${TURBO_BUTTON_ID}`);
     const turboInfo = panel.querySelector(`#${TURBO_INFO_ID}`);
+    const renderedStat = panel.querySelector(`#${STATS_RENDERED_ID}`);
+    const removedStat = panel.querySelector(`#${STATS_REMOVED_ID}`);
 
     if (badge) {
       badge.textContent = speedModeEnabled ? 'ON' : 'OFF';
@@ -122,6 +96,11 @@
 
     if (toggleInput) {
       toggleInput.checked = speedModeEnabled;
+    }
+
+    if (ultraToggle) {
+      ultraToggle.checked = ultraModeEnabled;
+      ultraToggle.disabled = !speedModeEnabled;
     }
 
     if (rangeInput) {
@@ -138,21 +117,118 @@
       turboButton.disabled = !speedModeEnabled;
     }
 
+    if (renderedStat) {
+      renderedStat.textContent = String(currentRenderedCount);
+    }
+
+    if (removedStat) {
+      removedStat.textContent = String(purgedMessagesCount);
+    }
+
     if (turboInfo) {
       if (purgedMessagesCount > 0) {
-        turboInfo.textContent = `🚀 Memória liberada: ${purgedMessagesCount} mensagens removidas do DOM (recarregue a página para restaurar).`;
+        turboInfo.textContent = `🚀 Turbo já removeu ${purgedMessagesCount} mensagens do DOM. Recarregue a página para restaurar tudo.`;
         turboInfo.classList.add('is-visible');
       } else {
-        turboInfo.textContent = 'Turbo opcional: remove mensagens já ocultas do DOM para reduzir uso de memória.';
+        turboInfo.textContent = ultraModeEnabled
+          ? 'Modo Ultra ativo: mensagens antigas são removidas automaticamente do DOM para máxima velocidade.'
+          : 'Turbo opcional: remove mensagens já ocultas do DOM para reduzir uso de memória.';
         turboInfo.classList.remove('is-visible');
       }
     }
+  };
+
+  const removeHiddenMessagesFromDOM = () => {
+    const hiddenMessages = getMessageBlocks().filter((message) => message.classList.contains(HIDDEN_CLASS));
+
+    if (!hiddenMessages.length) {
+      return 0;
+    }
+
+    suppressObserverUntil = Date.now() + 300;
+
+    for (let i = 0; i < hiddenMessages.length; i += 1) {
+      hiddenMessages[i].remove();
+    }
+
+    return hiddenMessages.length;
+  };
+
+  const hideOlderMessages = () => {
+    const messages = getMessageBlocks();
+    const existingMarker = document.getElementById(CUTOFF_MARKER_ID);
+
+    if (existingMarker) {
+      existingMarker.remove();
+    }
+
+    currentRenderedCount = messages.length;
+
+    if (!messages.length) {
+      updatePanelUI();
+      return;
+    }
+
+    const keepFrom = Math.max(messages.length - visibleMessagesCount, 0);
+
+    for (let i = 0; i < messages.length; i += 1) {
+      if (speedModeEnabled && i < keepFrom) {
+        messages[i].classList.add(HIDDEN_CLASS);
+      } else {
+        messages[i].classList.remove(HIDDEN_CLASS);
+      }
+    }
+
+    if (speedModeEnabled && keepFrom > 0) {
+      const firstVisibleMessage = messages[keepFrom];
+
+      if (firstVisibleMessage && firstVisibleMessage.parentElement) {
+        const marker = document.createElement('div');
+        marker.id = CUTOFF_MARKER_ID;
+        marker.className = 'speedchat-cutoff-marker';
+        marker.textContent = `⚡ SpeedChat ocultou ${keepFrom} mensagens anteriores`;
+        firstVisibleMessage.parentElement.insertBefore(marker, firstVisibleMessage);
+      }
+    }
+
+    if (speedModeEnabled && ultraModeEnabled) {
+      const removed = removeHiddenMessagesFromDOM();
+      if (removed > 0) {
+        purgedMessagesCount += removed;
+        currentRenderedCount = Math.max(visibleMessagesCount, messages.length - removed);
+      }
+    }
+
+    updatePanelUI();
+  };
+
+  const scheduleUpdate = () => {
+    if (debounceTimer) {
+      window.clearTimeout(debounceTimer);
+    }
+
+    debounceTimer = window.setTimeout(() => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+
+      rafId = window.requestAnimationFrame(() => {
+        hideOlderMessages();
+      });
+    }, 80);
   };
 
   const setSpeedMode = async (enabled) => {
     speedModeEnabled = Boolean(enabled);
     updatePanelUI();
     await chrome.storage.local.set({ [STORAGE_ENABLED_KEY]: speedModeEnabled });
+    scheduleUpdate();
+  };
+
+  const setUltraMode = async (enabled) => {
+    ultraModeEnabled = Boolean(enabled);
+    updatePanelUI();
+    await chrome.storage.local.set({ [STORAGE_ULTRA_MODE_KEY]: ultraModeEnabled });
     scheduleUpdate();
   };
 
@@ -173,20 +249,13 @@
       return;
     }
 
-    const hiddenMessages = getMessageBlocks().filter((message) => message.classList.contains(HIDDEN_CLASS));
-
-    if (!hiddenMessages.length) {
-      updatePanelUI();
-      return;
+    const removed = removeHiddenMessagesFromDOM();
+    if (removed > 0) {
+      purgedMessagesCount += removed;
+      scheduleUpdate();
     }
 
-    for (let i = 0; i < hiddenMessages.length; i += 1) {
-      hiddenMessages[i].remove();
-    }
-
-    purgedMessagesCount += hiddenMessages.length;
     updatePanelUI();
-    scheduleUpdate();
   };
 
   const buildPanel = () => {
@@ -203,10 +272,27 @@
         <span id="${STATUS_BADGE_ID}" class="speedchat-status-badge">ON</span>
       </div>
 
+      <div class="speedchat-stats">
+        <div class="speedchat-stat-card">
+          <span class="speedchat-stat-card__label">Renderizadas</span>
+          <strong id="${STATS_RENDERED_ID}" class="speedchat-stat-card__value">0</strong>
+        </div>
+        <div class="speedchat-stat-card">
+          <span class="speedchat-stat-card__label">Removidas</span>
+          <strong id="${STATS_REMOVED_ID}" class="speedchat-stat-card__value">0</strong>
+        </div>
+      </div>
+
       <label class="speedchat-switch" for="${TOGGLE_INPUT_ID}">
         <input id="${TOGGLE_INPUT_ID}" type="checkbox" checked />
         <span class="speedchat-switch__track"><span class="speedchat-switch__thumb"></span></span>
         <span class="speedchat-switch__label">Ativar filtro</span>
+      </label>
+
+      <label class="speedchat-switch" for="${ULTRA_TOGGLE_ID}">
+        <input id="${ULTRA_TOGGLE_ID}" type="checkbox" />
+        <span class="speedchat-switch__track"><span class="speedchat-switch__thumb"></span></span>
+        <span class="speedchat-switch__label">Modo Ultra (auto limpar memória)</span>
       </label>
 
       <div class="speedchat-slider-group">
@@ -234,25 +320,29 @@
     `;
 
     const toggle = panel.querySelector(`#${TOGGLE_INPUT_ID}`);
+    const ultraToggle = panel.querySelector(`#${ULTRA_TOGGLE_ID}`);
     const rangeInput = panel.querySelector(`#${RANGE_INPUT_ID}`);
     const turboButton = panel.querySelector(`#${TURBO_BUTTON_ID}`);
 
     toggle?.addEventListener('change', (event) => {
       const target = event.currentTarget;
-      if (!(target instanceof HTMLInputElement)) {
-        return;
+      if (target instanceof HTMLInputElement) {
+        setSpeedMode(target.checked);
       }
+    });
 
-      setSpeedMode(target.checked);
+    ultraToggle?.addEventListener('change', (event) => {
+      const target = event.currentTarget;
+      if (target instanceof HTMLInputElement) {
+        setUltraMode(target.checked);
+      }
     });
 
     rangeInput?.addEventListener('input', (event) => {
       const target = event.currentTarget;
-      if (!(target instanceof HTMLInputElement)) {
-        return;
+      if (target instanceof HTMLInputElement) {
+        setVisibleMessagesCount(target.value);
       }
-
-      setVisibleMessagesCount(target.value);
     });
 
     turboButton?.addEventListener('click', () => {
@@ -308,9 +398,33 @@
     }
 
     observer = new MutationObserver((mutations) => {
-      const relevant = mutations.some(
-        (mutation) => mutation.type === 'childList' && (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0)
-      );
+      if (Date.now() < suppressObserverUntil) {
+        return;
+      }
+
+      const relevant = mutations.some((mutation) => {
+        if (mutation.type !== 'childList') {
+          return false;
+        }
+
+        if (mutation.addedNodes.length > 0) {
+          for (let i = 0; i < mutation.addedNodes.length; i += 1) {
+            if (isLikelyMessageNode(mutation.addedNodes[i])) {
+              return true;
+            }
+          }
+        }
+
+        if (mutation.removedNodes.length > 0) {
+          for (let i = 0; i < mutation.removedNodes.length; i += 1) {
+            if (isLikelyMessageNode(mutation.removedNodes[i])) {
+              return true;
+            }
+          }
+        }
+
+        return false;
+      });
 
       if (relevant) {
         ensurePanelMounted();
@@ -328,10 +442,12 @@
   const init = async () => {
     const stored = await chrome.storage.local.get({
       [STORAGE_ENABLED_KEY]: true,
-      [STORAGE_VISIBLE_MESSAGES_KEY]: DEFAULT_VISIBLE_MESSAGES
+      [STORAGE_VISIBLE_MESSAGES_KEY]: DEFAULT_VISIBLE_MESSAGES,
+      [STORAGE_ULTRA_MODE_KEY]: false
     });
 
     speedModeEnabled = Boolean(stored[STORAGE_ENABLED_KEY]);
+    ultraModeEnabled = Boolean(stored[STORAGE_ULTRA_MODE_KEY]);
     visibleMessagesCount = Math.min(
       MAX_VISIBLE_MESSAGES,
       Math.max(MIN_VISIBLE_MESSAGES, Number.parseInt(String(stored[STORAGE_VISIBLE_MESSAGES_KEY]), 10) || DEFAULT_VISIBLE_MESSAGES)
@@ -348,6 +464,10 @@
 
       if (changes[STORAGE_ENABLED_KEY]) {
         speedModeEnabled = Boolean(changes[STORAGE_ENABLED_KEY].newValue);
+      }
+
+      if (changes[STORAGE_ULTRA_MODE_KEY]) {
+        ultraModeEnabled = Boolean(changes[STORAGE_ULTRA_MODE_KEY].newValue);
       }
 
       if (changes[STORAGE_VISIBLE_MESSAGES_KEY]) {

@@ -1,8 +1,22 @@
 chrome.runtime.onInstalled.addListener(async () => {
-  const result = await chrome.storage.local.get({ speedchatEnabled: true });
+  const defaults = {
+    speedchatEnabled: true,
+    speedchatUltraMode: false
+  };
+
+  const result = await chrome.storage.local.get(defaults);
+  const updates = {};
 
   if (typeof result.speedchatEnabled !== 'boolean') {
-    await chrome.storage.local.set({ speedchatEnabled: true });
+    updates.speedchatEnabled = defaults.speedchatEnabled;
+  }
+
+  if (typeof result.speedchatUltraMode !== 'boolean') {
+    updates.speedchatUltraMode = defaults.speedchatUltraMode;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await chrome.storage.local.set(updates);
   }
 
   // TODO: Pro Feature – smart search
