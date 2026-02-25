@@ -13,9 +13,13 @@
   const RANGE_INPUT_ID = 'speedchat-range';
   const RANGE_VALUE_ID = 'speedchat-range-value';
   const TOGGLE_INPUT_ID = 'speedchat-enabled-toggle';
+  const CUTOFF_MARKER_ID = 'speedchat-cutoff-marker';
+  const TURBO_BUTTON_ID = 'speedchat-turbo-clean';
+  const TURBO_INFO_ID = 'speedchat-turbo-info';
 
   let speedModeEnabled = true;
   let visibleMessagesCount = DEFAULT_VISIBLE_MESSAGES;
+  let purgedMessagesCount = 0;
   let rafId = null;
   let debounceTimer = null;
   let observer = null;
@@ -23,6 +27,11 @@
 
   const hideOlderMessages = () => {
     const messages = getMessageBlocks();
+    const existingMarker = document.getElementById(CUTOFF_MARKER_ID);
+
+    if (existingMarker) {
+      existingMarker.remove();
+    }
 
     if (!messages.length) {
       return;
@@ -37,6 +46,22 @@
         messages[i].classList.remove(HIDDEN_CLASS);
       }
     }
+
+    if (!speedModeEnabled || keepFrom <= 0) {
+      return;
+    }
+
+    const firstVisibleMessage = messages[keepFrom];
+
+    if (!firstVisibleMessage || !firstVisibleMessage.parentElement) {
+      return;
+    }
+
+    const marker = document.createElement('div');
+    marker.id = CUTOFF_MARKER_ID;
+    marker.className = 'speedchat-cutoff-marker';
+    marker.textContent = `⚡ SpeedChat ocultou ${keepFrom} mensagens anteriores`;
+    firstVisibleMessage.parentElement.insertBefore(marker, firstVisibleMessage);
   };
 
   const scheduleUpdate = () => {
@@ -87,6 +112,8 @@
     const rangeInput = panel.querySelector(`#${RANGE_INPUT_ID}`);
     const rangeValue = panel.querySelector(`#${RANGE_VALUE_ID}`);
     const toggleInput = panel.querySelector(`#${TOGGLE_INPUT_ID}`);
+    const turboButton = panel.querySelector(`#${TURBO_BUTTON_ID}`);
+    const turboInfo = panel.querySelector(`#${TURBO_INFO_ID}`);
 
     if (badge) {
       badge.textContent = speedModeEnabled ? 'ON' : 'OFF';
@@ -106,6 +133,20 @@
       rangeValue.textContent = `${visibleMessagesCount} mensagens`;
       rangeValue.classList.toggle('is-disabled', !speedModeEnabled);
     }
+
+    if (turboButton) {
+      turboButton.disabled = !speedModeEnabled;
+    }
+
+    if (turboInfo) {
+      if (purgedMessagesCount > 0) {
+        turboInfo.textContent = `🚀 Memória liberada: ${purgedMessagesCount} mensagens removidas do DOM (recarregue a página para restaurar).`;
+        turboInfo.classList.add('is-visible');
+      } else {
+        turboInfo.textContent = 'Turbo opcional: remove mensagens já ocultas do DOM para reduzir uso de memória.';
+        turboInfo.classList.remove('is-visible');
+      }
+    }
   };
 
   const setSpeedMode = async (enabled) => {
@@ -124,6 +165,27 @@
     visibleMessagesCount = normalized;
     updatePanelUI();
     await chrome.storage.local.set({ [STORAGE_VISIBLE_MESSAGES_KEY]: visibleMessagesCount });
+    scheduleUpdate();
+  };
+
+  const runTurboCleanup = () => {
+    if (!speedModeEnabled) {
+      return;
+    }
+
+    const hiddenMessages = getMessageBlocks().filter((message) => message.classList.contains(HIDDEN_CLASS));
+
+    if (!hiddenMessages.length) {
+      updatePanelUI();
+      return;
+    }
+
+    for (let i = 0; i < hiddenMessages.length; i += 1) {
+      hiddenMessages[i].remove();
+    }
+
+    purgedMessagesCount += hiddenMessages.length;
+    updatePanelUI();
     scheduleUpdate();
   };
 
@@ -162,10 +224,18 @@
           value="${DEFAULT_VISIBLE_MESSAGES}"
         />
       </div>
+
+      <button id="${TURBO_BUTTON_ID}" class="speedchat-turbo-button" type="button">
+        ⚡ Limpar memória agora
+      </button>
+      <p id="${TURBO_INFO_ID}" class="speedchat-turbo-info">
+        Turbo opcional: remove mensagens já ocultas do DOM para reduzir uso de memória.
+      </p>
     `;
 
     const toggle = panel.querySelector(`#${TOGGLE_INPUT_ID}`);
     const rangeInput = panel.querySelector(`#${RANGE_INPUT_ID}`);
+    const turboButton = panel.querySelector(`#${TURBO_BUTTON_ID}`);
 
     toggle?.addEventListener('change', (event) => {
       const target = event.currentTarget;
@@ -183,6 +253,10 @@
       }
 
       setVisibleMessagesCount(target.value);
+    });
+
+    turboButton?.addEventListener('click', () => {
+      runTurboCleanup();
     });
 
     return panel;
