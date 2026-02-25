@@ -32,6 +32,17 @@
   let observer = null;
   let bodyWaitTimer = null;
   let suppressObserverUntil = 0;
+  let lastStreamingUpdateAt = 0;
+  let lastAppliedSignature = '';
+
+  const STREAMING_UPDATE_INTERVAL_MS = 1200;
+
+  const isResponseStreaming = () =>
+    Boolean(
+      document.querySelector(
+        'button[aria-label*="Stop" i], button[data-testid*="stop" i], [data-testid*="stop" i], [aria-live="polite"] [data-testid*="typing" i]'
+      )
+    );
 
   const isLikelyMessageNode = (node) => {
     if (!(node instanceof Element)) {
@@ -171,6 +182,12 @@
 
     const keepFrom = Math.max(messages.length - visibleMessagesCount, 0);
 
+    const nextSignature = `${speedModeEnabled}-${ultraModeEnabled}-${visibleMessagesCount}-${messages.length}-${keepFrom}`;
+    if (nextSignature === lastAppliedSignature) {
+      updatePanelUI();
+      return;
+    }
+
     for (let i = 0; i < messages.length; i += 1) {
       if (speedModeEnabled && i < keepFrom) {
         messages[i].classList.add(HIDDEN_CLASS);
@@ -196,7 +213,17 @@
       if (removed > 0) {
         purgedMessagesCount += removed;
         currentRenderedCount = Math.max(visibleMessagesCount, messages.length - removed);
+        lastAppliedSignature = '';
       }
+    }
+
+    if (lastAppliedSignature === '') {
+      lastAppliedSignature = `${speedModeEnabled}-${ultraModeEnabled}-${visibleMessagesCount}-${currentRenderedCount}-${Math.max(
+        currentRenderedCount - visibleMessagesCount,
+        0
+      )}`;
+    } else {
+      lastAppliedSignature = nextSignature;
     }
 
     updatePanelUI();
@@ -220,6 +247,7 @@
 
   const setSpeedMode = async (enabled) => {
     speedModeEnabled = Boolean(enabled);
+    lastAppliedSignature = '';
     updatePanelUI();
     await chrome.storage.local.set({ [STORAGE_ENABLED_KEY]: speedModeEnabled });
     scheduleUpdate();
@@ -227,6 +255,7 @@
 
   const setUltraMode = async (enabled) => {
     ultraModeEnabled = Boolean(enabled);
+    lastAppliedSignature = '';
     updatePanelUI();
     await chrome.storage.local.set({ [STORAGE_ULTRA_MODE_KEY]: ultraModeEnabled });
     scheduleUpdate();
@@ -239,6 +268,7 @@
     );
 
     visibleMessagesCount = normalized;
+    lastAppliedSignature = '';
     updatePanelUI();
     await chrome.storage.local.set({ [STORAGE_VISIBLE_MESSAGES_KEY]: visibleMessagesCount });
     scheduleUpdate();
@@ -252,6 +282,7 @@
     const removed = removeHiddenMessagesFromDOM();
     if (removed > 0) {
       purgedMessagesCount += removed;
+      lastAppliedSignature = '';
       scheduleUpdate();
     }
 
@@ -427,6 +458,14 @@
       });
 
       if (relevant) {
+        if (isResponseStreaming()) {
+          const now = Date.now();
+          if (now - lastStreamingUpdateAt < STREAMING_UPDATE_INTERVAL_MS) {
+            return;
+          }
+          lastStreamingUpdateAt = now;
+        }
+
         ensurePanelMounted();
         scheduleUpdate();
       }
@@ -464,10 +503,12 @@
 
       if (changes[STORAGE_ENABLED_KEY]) {
         speedModeEnabled = Boolean(changes[STORAGE_ENABLED_KEY].newValue);
+        lastAppliedSignature = '';
       }
 
       if (changes[STORAGE_ULTRA_MODE_KEY]) {
         ultraModeEnabled = Boolean(changes[STORAGE_ULTRA_MODE_KEY].newValue);
+        lastAppliedSignature = '';
       }
 
       if (changes[STORAGE_VISIBLE_MESSAGES_KEY]) {
@@ -478,6 +519,7 @@
             Number.parseInt(String(changes[STORAGE_VISIBLE_MESSAGES_KEY].newValue), 10) || DEFAULT_VISIBLE_MESSAGES
           )
         );
+        lastAppliedSignature = '';
       }
 
       updatePanelUI();
