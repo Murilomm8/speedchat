@@ -1,0 +1,221 @@
+.speedchat-hidden {
+  display: none !important;
+}
+
+.speedchat-cutoff-marker {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(52, 211, 153, 0.45);
+  background: linear-gradient(165deg, rgba(6, 78, 59, 0.15), rgba(16, 185, 129, 0.08));
+  color: #6ee7b7;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.speedchat-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 330px;
+  max-width: calc(100vw - 24px);
+  z-index: 2147483647;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(165deg, rgba(17, 24, 39, 0.96), rgba(31, 41, 55, 0.93));
+  backdrop-filter: blur(8px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+  color: #f9fafb;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.speedchat-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.speedchat-panel__eyebrow {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(229, 231, 235, 0.75);
+}
+
+.speedchat-panel__title {
+  margin: 6px 0 0;
+  font-size: 16px;
+  line-height: 1.2;
+  color: #ffffff;
+}
+
+.speedchat-status-badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  color: #34d399;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.speedchat-status-badge.is-off {
+  background: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.5);
+  color: #fb7185;
+}
+
+.speedchat-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.speedchat-stat-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 8px 10px;
+}
+
+.speedchat-stat-card__label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgba(229, 231, 235, 0.72);
+  margin-bottom: 3px;
+}
+
+.speedchat-stat-card__value {
+  font-size: 18px;
+  line-height: 1;
+  color: #ffffff;
+}
+
+.speedchat-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.speedchat-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.speedchat-switch__track {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(75, 85, 99, 0.8);
+  transition: background-color 150ms ease;
+  flex-shrink: 0;
+}
+
+.speedchat-switch__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 150ms ease;
+}
+
+.speedchat-switch input:checked + .speedchat-switch__track {
+  background: rgba(16, 185, 129, 0.95);
+}
+
+.speedchat-switch input:checked + .speedchat-switch__track .speedchat-switch__thumb {
+  transform: translateX(18px);
+}
+
+.speedchat-switch__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.speedchat-slider-group {
+  margin-bottom: 12px;
+}
+
+.speedchat-slider-group__labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #d1d5db;
+}
+
+.speedchat-slider-group__value {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.speedchat-slider-group__value.is-disabled {
+  color: rgba(209, 213, 219, 0.8);
+}
+
+.speedchat-slider {
+  width: 100%;
+  accent-color: #34d399;
+  cursor: pointer;
+}
+
+.speedchat-slider:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.speedchat-turbo-button {
+  width: 100%;
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  background: linear-gradient(165deg, rgba(30, 64, 175, 0.42), rgba(37, 99, 235, 0.28));
+  color: #dbeafe;
+  border-radius: 10px;
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.speedchat-turbo-button:hover {
+  transform: translateY(-1px);
+}
+
+.speedchat-turbo-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.speedchat-turbo-info {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: rgba(191, 219, 254, 0.95);
+}
+
+.speedchat-turbo-info.is-visible {
+  color: #86efac;
+}
