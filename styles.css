@@ -222,8 +222,8 @@
 
 .speedchat-license-panel {
   position: fixed;
-  left: 16px;
-  bottom: 16px;
+  right: 16px;
+  bottom: 390px;
   width: 320px;
   max-width: calc(100vw - 24px);
   z-index: 2147483647;

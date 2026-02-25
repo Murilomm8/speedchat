@@ -318,6 +318,8 @@
       return;
     }
 
+    panel.style.display = appState === 'PRO' ? 'none' : 'block';
+
     const status = panel.querySelector(`#${LICENSE_STATUS_ID}`);
     const trial = panel.querySelector(`#${LICENSE_TRIAL_ID}`);
     const input = panel.querySelector(`#${LICENSE_INPUT_ID}`);
