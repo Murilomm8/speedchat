@@ -20,12 +20,20 @@
   const ULTRA_TOGGLE_ID = 'speedchat-ultra-toggle';
   const STATS_RENDERED_ID = 'speedchat-stats-rendered';
   const STATS_REMOVED_ID = 'speedchat-stats-removed';
+  const LICENSE_PANEL_ID = 'speedchat-license-panel';
+  const LICENSE_STATUS_ID = 'speedchat-license-status';
+  const LICENSE_TRIAL_ID = 'speedchat-license-trial';
+  const LICENSE_INPUT_ID = 'speedchat-license-input';
+  const LICENSE_BUTTON_ID = 'speedchat-license-button';
+  const LICENSE_FEEDBACK_ID = 'speedchat-license-feedback';
 
   let speedModeEnabled = true;
   let visibleMessagesCount = DEFAULT_VISIBLE_MESSAGES;
   let ultraModeEnabled = false;
   let purgedMessagesCount = 0;
   let currentRenderedCount = 0;
+  let appState = 'TRIAL';
+  let trialRemainingDays = 0;
 
   let rafId = null;
   let debounceTimer = null;
@@ -100,23 +108,27 @@
     const renderedStat = panel.querySelector(`#${STATS_RENDERED_ID}`);
     const removedStat = panel.querySelector(`#${STATS_REMOVED_ID}`);
 
+    const hasAccess = appState !== 'BLOCKED';
+
     if (badge) {
-      badge.textContent = speedModeEnabled ? 'ON' : 'OFF';
-      badge.classList.toggle('is-off', !speedModeEnabled);
+      const modeText = speedModeEnabled && hasAccess ? 'ON' : 'OFF';
+      badge.textContent = appState === 'PRO' ? `${modeText} • PRO` : modeText;
+      badge.classList.toggle('is-off', !speedModeEnabled || !hasAccess);
     }
 
     if (toggleInput) {
-      toggleInput.checked = speedModeEnabled;
+      toggleInput.checked = speedModeEnabled && hasAccess;
+      toggleInput.disabled = !hasAccess;
     }
 
     if (ultraToggle) {
       ultraToggle.checked = ultraModeEnabled;
-      ultraToggle.disabled = !speedModeEnabled;
+      ultraToggle.disabled = !speedModeEnabled || !hasAccess;
     }
 
     if (rangeInput) {
       rangeInput.value = String(visibleMessagesCount);
-      rangeInput.disabled = !speedModeEnabled;
+      rangeInput.disabled = !speedModeEnabled || !hasAccess;
     }
 
     if (rangeValue) {
@@ -125,7 +137,7 @@
     }
 
     if (turboButton) {
-      turboButton.disabled = !speedModeEnabled;
+      turboButton.disabled = !speedModeEnabled || !hasAccess;
     }
 
     if (renderedStat) {
@@ -174,6 +186,16 @@
     }
 
     currentRenderedCount = messages.length;
+
+    if (appState === 'BLOCKED') {
+      for (let i = 0; i < messages.length; i += 1) {
+        messages[i].classList.remove(HIDDEN_CLASS);
+      }
+
+      updatePanelUI();
+      updateLicenseUI();
+      return;
+    }
 
     if (!messages.length) {
       updatePanelUI();
@@ -227,6 +249,7 @@
     }
 
     updatePanelUI();
+    updateLicenseUI();
   };
 
   const scheduleUpdate = () => {
@@ -287,6 +310,95 @@
     }
 
     updatePanelUI();
+  };
+
+  const updateLicenseUI = (feedback = '') => {
+    const panel = document.getElementById(LICENSE_PANEL_ID);
+    if (!panel) {
+      return;
+    }
+
+    const status = panel.querySelector(`#${LICENSE_STATUS_ID}`);
+    const trial = panel.querySelector(`#${LICENSE_TRIAL_ID}`);
+    const input = panel.querySelector(`#${LICENSE_INPUT_ID}`);
+    const button = panel.querySelector(`#${LICENSE_BUTTON_ID}`);
+    const feedbackEl = panel.querySelector(`#${LICENSE_FEEDBACK_ID}`);
+
+    if (status) {
+      status.textContent = appState === 'PRO' ? 'PRO desbloqueado' : appState === 'TRIAL' ? 'Modo Trial' : 'Trial expirado';
+    }
+
+    if (trial) {
+      trial.textContent = appState === 'PRO' ? 'Acesso vitalício ativo.' : `Dias restantes no trial: ${trialRemainingDays}`;
+    }
+
+    if (input) {
+      input.disabled = appState === 'PRO';
+    }
+
+    if (button) {
+      button.disabled = appState === 'PRO';
+    }
+
+    if (feedbackEl) {
+      feedbackEl.textContent = feedback;
+      feedbackEl.classList.toggle('is-error', feedback.toLowerCase().includes('inválida'));
+    }
+  };
+
+  const refreshLicenseState = async () => {
+    if (!globalThis.SpeedChatLicenseManager) {
+      appState = 'TRIAL';
+      trialRemainingDays = 0;
+      return;
+    }
+
+    appState = await globalThis.SpeedChatLicenseManager.getAppState();
+    const trialInfo = await globalThis.SpeedChatLicenseManager.getTrialInfo();
+    trialRemainingDays = trialInfo.remainingDays;
+
+    if (appState === 'BLOCKED' && speedModeEnabled) {
+      speedModeEnabled = false;
+      await chrome.storage.local.set({ [STORAGE_ENABLED_KEY]: false });
+    }
+  };
+
+  const buildLicensePanel = () => {
+    const panel = document.createElement('section');
+    panel.id = LICENSE_PANEL_ID;
+    panel.className = 'speedchat-license-panel';
+    panel.innerHTML = `
+      <p id="${LICENSE_STATUS_ID}" class="speedchat-license-panel__title">Modo Trial</p>
+      <p id="${LICENSE_TRIAL_ID}" class="speedchat-license-panel__sub">Dias restantes no trial: 7</p>
+      <div class="speedchat-license-panel__row">
+        <input id="${LICENSE_INPUT_ID}" class="speedchat-license-input" type="text" placeholder="SPD-XXXXXX-PRO" />
+        <button id="${LICENSE_BUTTON_ID}" class="speedchat-license-button" type="button">Unlock</button>
+      </div>
+      <p id="${LICENSE_FEEDBACK_ID}" class="speedchat-license-feedback"></p>
+    `;
+
+    const button = panel.querySelector(`#${LICENSE_BUTTON_ID}`);
+    const input = panel.querySelector(`#${LICENSE_INPUT_ID}`);
+
+    button?.addEventListener('click', async () => {
+      if (!(input instanceof HTMLInputElement) || !globalThis.SpeedChatLicenseManager) {
+        return;
+      }
+
+      const unlocked = await globalThis.SpeedChatLicenseManager.unlockWithKey(input.value);
+
+      if (unlocked) {
+        await refreshLicenseState();
+        updateLicenseUI('Licença PRO validada com sucesso.');
+      } else {
+        updateLicenseUI('Chave inválida. Verifique o formato e tente novamente.');
+      }
+
+      updatePanelUI();
+      scheduleUpdate();
+    });
+
+    return panel;
   };
 
   const buildPanel = () => {
@@ -394,7 +506,14 @@
 
     const panel = buildPanel();
     document.body.appendChild(panel);
+
+    if (!document.getElementById(LICENSE_PANEL_ID)) {
+      const licensePanel = buildLicensePanel();
+      document.body.appendChild(licensePanel);
+    }
+
     updatePanelUI();
+    updateLicenseUI();
     return true;
   };
 
@@ -492,6 +611,8 @@
       Math.max(MIN_VISIBLE_MESSAGES, Number.parseInt(String(stored[STORAGE_VISIBLE_MESSAGES_KEY]), 10) || DEFAULT_VISIBLE_MESSAGES)
     );
 
+    await refreshLicenseState();
+
     ensurePanelMounted();
     startObserver();
     scheduleUpdate();
@@ -522,7 +643,15 @@
         lastAppliedSignature = '';
       }
 
+      if (changes.proUnlocked || changes.trialStart) {
+        refreshLicenseState().then(() => {
+          updateLicenseUI();
+          updatePanelUI();
+        });
+      }
+
       updatePanelUI();
+      updateLicenseUI();
       scheduleUpdate();
     });
 
