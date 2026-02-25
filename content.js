@@ -1,10 +1,21 @@
 (() => {
-  const MAX_VISIBLE_MESSAGES = 30;
-  const STORAGE_KEY = 'speedchatEnabled';
+  const DEFAULT_VISIBLE_MESSAGES = 30;
+  const MIN_VISIBLE_MESSAGES = 10;
+  const MAX_VISIBLE_MESSAGES = 120;
+  const STEP_VISIBLE_MESSAGES = 5;
+
+  const STORAGE_ENABLED_KEY = 'speedchatEnabled';
+  const STORAGE_VISIBLE_MESSAGES_KEY = 'speedchatVisibleMessages';
+
   const HIDDEN_CLASS = 'speedchat-hidden';
-  const TOGGLE_ID = 'speedchat-toggle';
+  const PANEL_ID = 'speedchat-panel';
+  const STATUS_BADGE_ID = 'speedchat-status-badge';
+  const RANGE_INPUT_ID = 'speedchat-range';
+  const RANGE_VALUE_ID = 'speedchat-range-value';
+  const TOGGLE_INPUT_ID = 'speedchat-enabled-toggle';
 
   let speedModeEnabled = true;
+  let visibleMessagesCount = DEFAULT_VISIBLE_MESSAGES;
   let rafId = null;
   let debounceTimer = null;
   let observer = null;
@@ -17,7 +28,7 @@
       return;
     }
 
-    const keepFrom = Math.max(messages.length - MAX_VISIBLE_MESSAGES, 0);
+    const keepFrom = Math.max(messages.length - visibleMessagesCount, 0);
 
     for (let i = 0; i < messages.length; i += 1) {
       if (speedModeEnabled && i < keepFrom) {
@@ -66,48 +77,134 @@
     ).filter((node) => node.isConnected && (node.textContent || '').trim().length > 0);
   };
 
-  const updateToggleButton = () => {
-    const button = document.getElementById(TOGGLE_ID);
-
-    if (!button) {
+  const updatePanelUI = () => {
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel) {
       return;
     }
 
-    button.setAttribute('aria-pressed', String(speedModeEnabled));
-    button.textContent = speedModeEnabled ? 'SpeedChat: ON' : 'SpeedChat: OFF';
+    const badge = panel.querySelector(`#${STATUS_BADGE_ID}`);
+    const rangeInput = panel.querySelector(`#${RANGE_INPUT_ID}`);
+    const rangeValue = panel.querySelector(`#${RANGE_VALUE_ID}`);
+    const toggleInput = panel.querySelector(`#${TOGGLE_INPUT_ID}`);
+
+    if (badge) {
+      badge.textContent = speedModeEnabled ? 'ON' : 'OFF';
+      badge.classList.toggle('is-off', !speedModeEnabled);
+    }
+
+    if (toggleInput) {
+      toggleInput.checked = speedModeEnabled;
+    }
+
+    if (rangeInput) {
+      rangeInput.value = String(visibleMessagesCount);
+      rangeInput.disabled = !speedModeEnabled;
+    }
+
+    if (rangeValue) {
+      rangeValue.textContent = `${visibleMessagesCount} mensagens`;
+      rangeValue.classList.toggle('is-disabled', !speedModeEnabled);
+    }
   };
 
   const setSpeedMode = async (enabled) => {
     speedModeEnabled = Boolean(enabled);
-    updateToggleButton();
-    await chrome.storage.local.set({ [STORAGE_KEY]: speedModeEnabled });
+    updatePanelUI();
+    await chrome.storage.local.set({ [STORAGE_ENABLED_KEY]: speedModeEnabled });
     scheduleUpdate();
   };
 
-  const mountToggleButton = () => {
+  const setVisibleMessagesCount = async (nextValue) => {
+    const normalized = Math.min(
+      MAX_VISIBLE_MESSAGES,
+      Math.max(MIN_VISIBLE_MESSAGES, Number.parseInt(String(nextValue), 10) || DEFAULT_VISIBLE_MESSAGES)
+    );
+
+    visibleMessagesCount = normalized;
+    updatePanelUI();
+    await chrome.storage.local.set({ [STORAGE_VISIBLE_MESSAGES_KEY]: visibleMessagesCount });
+    scheduleUpdate();
+  };
+
+  const buildPanel = () => {
+    const panel = document.createElement('section');
+    panel.id = PANEL_ID;
+    panel.className = 'speedchat-panel';
+
+    panel.innerHTML = `
+      <div class="speedchat-panel__header">
+        <div>
+          <p class="speedchat-panel__eyebrow">SpeedChat Filter</p>
+          <h3 class="speedchat-panel__title">Modo desempenho</h3>
+        </div>
+        <span id="${STATUS_BADGE_ID}" class="speedchat-status-badge">ON</span>
+      </div>
+
+      <label class="speedchat-switch" for="${TOGGLE_INPUT_ID}">
+        <input id="${TOGGLE_INPUT_ID}" type="checkbox" checked />
+        <span class="speedchat-switch__track"><span class="speedchat-switch__thumb"></span></span>
+        <span class="speedchat-switch__label">Ativar filtro</span>
+      </label>
+
+      <div class="speedchat-slider-group">
+        <div class="speedchat-slider-group__labels">
+          <span>Mensagens visíveis</span>
+          <span id="${RANGE_VALUE_ID}" class="speedchat-slider-group__value">30 mensagens</span>
+        </div>
+        <input
+          id="${RANGE_INPUT_ID}"
+          class="speedchat-slider"
+          type="range"
+          min="${MIN_VISIBLE_MESSAGES}"
+          max="${MAX_VISIBLE_MESSAGES}"
+          step="${STEP_VISIBLE_MESSAGES}"
+          value="${DEFAULT_VISIBLE_MESSAGES}"
+        />
+      </div>
+    `;
+
+    const toggle = panel.querySelector(`#${TOGGLE_INPUT_ID}`);
+    const rangeInput = panel.querySelector(`#${RANGE_INPUT_ID}`);
+
+    toggle?.addEventListener('change', (event) => {
+      const target = event.currentTarget;
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+
+      setSpeedMode(target.checked);
+    });
+
+    rangeInput?.addEventListener('input', (event) => {
+      const target = event.currentTarget;
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+
+      setVisibleMessagesCount(target.value);
+    });
+
+    return panel;
+  };
+
+  const mountPanel = () => {
     if (!document.body) {
       return false;
     }
 
-    if (document.getElementById(TOGGLE_ID)) {
+    if (document.getElementById(PANEL_ID)) {
       return true;
     }
 
-    const button = document.createElement('button');
-    button.id = TOGGLE_ID;
-    button.type = 'button';
-    button.className = 'speedchat-toggle';
-    button.addEventListener('click', () => {
-      setSpeedMode(!speedModeEnabled);
-    });
-
-    document.body.appendChild(button);
-    updateToggleButton();
+    const panel = buildPanel();
+    document.body.appendChild(panel);
+    updatePanelUI();
     return true;
   };
 
-  const ensureToggleMounted = () => {
-    if (mountToggleButton()) {
+  const ensurePanelMounted = () => {
+    if (mountPanel()) {
       if (bodyWaitTimer) {
         window.clearInterval(bodyWaitTimer);
         bodyWaitTimer = null;
@@ -120,7 +217,7 @@
     }
 
     bodyWaitTimer = window.setInterval(() => {
-      if (mountToggleButton()) {
+      if (mountPanel()) {
         window.clearInterval(bodyWaitTimer);
         bodyWaitTimer = null;
       }
@@ -137,10 +234,12 @@
     }
 
     observer = new MutationObserver((mutations) => {
-      const relevant = mutations.some((mutation) => mutation.type === 'childList' && (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0));
+      const relevant = mutations.some(
+        (mutation) => mutation.type === 'childList' && (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0)
+      );
 
       if (relevant) {
-        ensureToggleMounted();
+        ensurePanelMounted();
         scheduleUpdate();
       }
     });
@@ -153,20 +252,41 @@
   };
 
   const init = async () => {
-    const stored = await chrome.storage.local.get({ [STORAGE_KEY]: true });
-    speedModeEnabled = Boolean(stored[STORAGE_KEY]);
+    const stored = await chrome.storage.local.get({
+      [STORAGE_ENABLED_KEY]: true,
+      [STORAGE_VISIBLE_MESSAGES_KEY]: DEFAULT_VISIBLE_MESSAGES
+    });
 
-    ensureToggleMounted();
+    speedModeEnabled = Boolean(stored[STORAGE_ENABLED_KEY]);
+    visibleMessagesCount = Math.min(
+      MAX_VISIBLE_MESSAGES,
+      Math.max(MIN_VISIBLE_MESSAGES, Number.parseInt(String(stored[STORAGE_VISIBLE_MESSAGES_KEY]), 10) || DEFAULT_VISIBLE_MESSAGES)
+    );
+
+    ensurePanelMounted();
     startObserver();
     scheduleUpdate();
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName !== 'local' || !changes[STORAGE_KEY]) {
+      if (areaName !== 'local') {
         return;
       }
 
-      speedModeEnabled = Boolean(changes[STORAGE_KEY].newValue);
-      updateToggleButton();
+      if (changes[STORAGE_ENABLED_KEY]) {
+        speedModeEnabled = Boolean(changes[STORAGE_ENABLED_KEY].newValue);
+      }
+
+      if (changes[STORAGE_VISIBLE_MESSAGES_KEY]) {
+        visibleMessagesCount = Math.min(
+          MAX_VISIBLE_MESSAGES,
+          Math.max(
+            MIN_VISIBLE_MESSAGES,
+            Number.parseInt(String(changes[STORAGE_VISIBLE_MESSAGES_KEY].newValue), 10) || DEFAULT_VISIBLE_MESSAGES
+          )
+        );
+      }
+
+      updatePanelUI();
       scheduleUpdate();
     });
 
