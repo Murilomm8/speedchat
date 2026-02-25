@@ -8,6 +8,7 @@
   let rafId = null;
   let debounceTimer = null;
   let observer = null;
+  let bodyWaitTimer = null;
 
   const hideOlderMessages = () => {
     const messages = getMessageBlocks();
@@ -44,30 +45,25 @@
   };
 
   const getMessageBlocks = () => {
-    const allArticles = Array.from(document.querySelectorAll('article'));
+    const primary = Array.from(document.querySelectorAll('article[data-testid]')).filter(
+      (article) => article.isConnected && (article.textContent || '').trim().length > 0
+    );
 
-    const candidateArticles = allArticles.filter((article) => {
-      if (!article.isConnected) {
-        return false;
-      }
-
-      if (article.closest('#speedchat-toggle')) {
-        return false;
-      }
-
-      const textLength = (article.textContent || '').trim().length;
-      return textLength > 0;
-    });
-
-    if (candidateArticles.length >= 4) {
-      return candidateArticles;
+    if (primary.length >= 2) {
+      return primary;
     }
 
-    const roleBlocks = Array.from(
-      document.querySelectorAll('[data-message-author-role], [data-testid*="conversation"], [data-testid*="message"]')
-    ).filter((node) => node.isConnected && node.textContent && node.textContent.trim().length > 0);
+    const allArticles = Array.from(document.querySelectorAll('article')).filter(
+      (article) => article.isConnected && (article.textContent || '').trim().length > 0
+    );
 
-    return roleBlocks;
+    if (allArticles.length >= 2) {
+      return allArticles;
+    }
+
+    return Array.from(
+      document.querySelectorAll('[data-message-author-role], [data-testid*="conversation"], [data-testid*="message"]')
+    ).filter((node) => node.isConnected && (node.textContent || '').trim().length > 0);
   };
 
   const updateToggleButton = () => {
@@ -89,8 +85,12 @@
   };
 
   const mountToggleButton = () => {
+    if (!document.body) {
+      return false;
+    }
+
     if (document.getElementById(TOGGLE_ID)) {
-      return;
+      return true;
     }
 
     const button = document.createElement('button');
@@ -103,23 +103,44 @@
 
     document.body.appendChild(button);
     updateToggleButton();
+    return true;
+  };
+
+  const ensureToggleMounted = () => {
+    if (mountToggleButton()) {
+      if (bodyWaitTimer) {
+        window.clearInterval(bodyWaitTimer);
+        bodyWaitTimer = null;
+      }
+      return;
+    }
+
+    if (bodyWaitTimer) {
+      return;
+    }
+
+    bodyWaitTimer = window.setInterval(() => {
+      if (mountToggleButton()) {
+        window.clearInterval(bodyWaitTimer);
+        bodyWaitTimer = null;
+      }
+    }, 200);
   };
 
   const startObserver = () => {
+    if (!document.body) {
+      return;
+    }
+
     if (observer) {
       observer.disconnect();
     }
 
     observer = new MutationObserver((mutations) => {
-      const relevant = mutations.some((mutation) => {
-        if (mutation.type === 'childList') {
-          return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
-        }
-
-        return mutation.type === 'attributes';
-      });
+      const relevant = mutations.some((mutation) => mutation.type === 'childList' && (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0));
 
       if (relevant) {
+        ensureToggleMounted();
         scheduleUpdate();
       }
     });
@@ -135,7 +156,7 @@
     const stored = await chrome.storage.local.get({ [STORAGE_KEY]: true });
     speedModeEnabled = Boolean(stored[STORAGE_KEY]);
 
-    mountToggleButton();
+    ensureToggleMounted();
     startObserver();
     scheduleUpdate();
 
@@ -155,9 +176,7 @@
   };
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      init();
-    });
+    document.addEventListener('DOMContentLoaded', init, { once: true });
   } else {
     init();
   }
