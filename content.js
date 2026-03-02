@@ -7,6 +7,7 @@
   const STORAGE_ENABLED_KEY = 'speedchatEnabled';
   const STORAGE_VISIBLE_MESSAGES_KEY = 'speedchatVisibleMessages';
   const STORAGE_ULTRA_MODE_KEY = 'speedchatUltraMode';
+  const STORAGE_PANEL_MINIMIZED_KEY = 'speedchatPanelMinimized';
 
   const HIDDEN_CLASS = 'speedchat-hidden';
   const PANEL_ID = 'speedchat-panel';
@@ -26,6 +27,8 @@
   const LICENSE_INPUT_ID = 'speedchat-license-input';
   const LICENSE_BUTTON_ID = 'speedchat-license-button';
   const LICENSE_FEEDBACK_ID = 'speedchat-license-feedback';
+  const MINIMIZE_BUTTON_ID = 'speedchat-minimize-button';
+  const RESTORE_BUTTON_ID = 'speedchat-restore-button';
 
   let speedModeEnabled = true;
   let visibleMessagesCount = DEFAULT_VISIBLE_MESSAGES;
@@ -34,6 +37,7 @@
   let currentRenderedCount = 0;
   let appState = 'TRIAL';
   let trialRemainingDays = 0;
+  let panelMinimized = false;
 
   let rafId = null;
   let debounceTimer = null;
@@ -107,6 +111,14 @@
     const turboInfo = panel.querySelector(`#${TURBO_INFO_ID}`);
     const renderedStat = panel.querySelector(`#${STATS_RENDERED_ID}`);
     const removedStat = panel.querySelector(`#${STATS_REMOVED_ID}`);
+    const minimizeButton = panel.querySelector(`#${MINIMIZE_BUTTON_ID}`);
+
+    panel.classList.toggle('is-minimized', panelMinimized);
+
+    const restoreButton = document.getElementById(RESTORE_BUTTON_ID);
+    if (restoreButton) {
+      restoreButton.style.display = panelMinimized ? 'inline-flex' : 'none';
+    }
 
     const hasAccess = appState !== 'BLOCKED';
 
@@ -114,6 +126,10 @@
       const modeText = speedModeEnabled && hasAccess ? 'ON' : 'OFF';
       badge.textContent = appState === 'PRO' ? `${modeText} • PRO` : modeText;
       badge.classList.toggle('is-off', !speedModeEnabled || !hasAccess);
+    }
+
+    if (minimizeButton) {
+      minimizeButton.textContent = panelMinimized ? 'Abrir' : 'Ocultar';
     }
 
     if (toggleInput) {
@@ -416,6 +432,7 @@
         </div>
         <span id="${STATUS_BADGE_ID}" class="speedchat-status-badge">ON</span>
       </div>
+      <button id="${MINIMIZE_BUTTON_ID}" class="speedchat-minimize-button" type="button">Ocultar</button>
 
       <div class="speedchat-stats">
         <div class="speedchat-stat-card">
@@ -468,6 +485,7 @@
     const ultraToggle = panel.querySelector(`#${ULTRA_TOGGLE_ID}`);
     const rangeInput = panel.querySelector(`#${RANGE_INPUT_ID}`);
     const turboButton = panel.querySelector(`#${TURBO_BUTTON_ID}`);
+    const minimizeButton = panel.querySelector(`#${MINIMIZE_BUTTON_ID}`);
 
     toggle?.addEventListener('change', (event) => {
       const target = event.currentTarget;
@@ -494,7 +512,36 @@
       runTurboCleanup();
     });
 
+    minimizeButton?.addEventListener('click', async () => {
+      panelMinimized = !panelMinimized;
+      await chrome.storage.local.set({ [STORAGE_PANEL_MINIMIZED_KEY]: panelMinimized });
+      updatePanelUI();
+    });
+
     return panel;
+  };
+
+  const mountRestoreButton = () => {
+    if (!document.body) {
+      return;
+    }
+
+    if (document.getElementById(RESTORE_BUTTON_ID)) {
+      return;
+    }
+
+    const button = document.createElement('button');
+    button.id = RESTORE_BUTTON_ID;
+    button.type = 'button';
+    button.className = 'speedchat-restore-button';
+    button.textContent = '⚡ SpeedChat';
+    button.addEventListener('click', async () => {
+      panelMinimized = false;
+      await chrome.storage.local.set({ [STORAGE_PANEL_MINIMIZED_KEY]: false });
+      updatePanelUI();
+    });
+
+    document.body.appendChild(button);
   };
 
   const mountPanel = () => {
@@ -508,6 +555,7 @@
 
     const panel = buildPanel();
     document.body.appendChild(panel);
+    mountRestoreButton();
 
     if (!document.getElementById(LICENSE_PANEL_ID)) {
       const licensePanel = buildLicensePanel();
@@ -603,11 +651,13 @@
     const stored = await chrome.storage.local.get({
       [STORAGE_ENABLED_KEY]: true,
       [STORAGE_VISIBLE_MESSAGES_KEY]: DEFAULT_VISIBLE_MESSAGES,
-      [STORAGE_ULTRA_MODE_KEY]: false
+      [STORAGE_ULTRA_MODE_KEY]: false,
+      [STORAGE_PANEL_MINIMIZED_KEY]: false
     });
 
     speedModeEnabled = Boolean(stored[STORAGE_ENABLED_KEY]);
     ultraModeEnabled = Boolean(stored[STORAGE_ULTRA_MODE_KEY]);
+    panelMinimized = Boolean(stored[STORAGE_PANEL_MINIMIZED_KEY]);
     visibleMessagesCount = Math.min(
       MAX_VISIBLE_MESSAGES,
       Math.max(MIN_VISIBLE_MESSAGES, Number.parseInt(String(stored[STORAGE_VISIBLE_MESSAGES_KEY]), 10) || DEFAULT_VISIBLE_MESSAGES)
@@ -643,6 +693,10 @@
           )
         );
         lastAppliedSignature = '';
+      }
+
+      if (changes[STORAGE_PANEL_MINIMIZED_KEY]) {
+        panelMinimized = Boolean(changes[STORAGE_PANEL_MINIMIZED_KEY].newValue);
       }
 
       if (changes.proUnlocked || changes.trialStart) {

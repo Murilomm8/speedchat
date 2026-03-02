@@ -56,6 +56,44 @@
   color: #ffffff;
 }
 
+.speedchat-minimize-button {
+  width: 100%;
+  margin-bottom: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(148, 163, 184, 0.14);
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.speedchat-panel.is-minimized .speedchat-stats,
+.speedchat-panel.is-minimized .speedchat-switch,
+.speedchat-panel.is-minimized .speedchat-slider-group,
+.speedchat-panel.is-minimized .speedchat-turbo-button,
+.speedchat-panel.is-minimized .speedchat-turbo-info {
+  display: none;
+}
+
+.speedchat-restore-button {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483647;
+  border: 1px solid rgba(16, 185, 129, 0.55);
+  background: linear-gradient(165deg, rgba(6, 95, 70, 0.95), rgba(16, 185, 129, 0.8));
+  color: #ecfdf5;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(5, 46, 22, 0.35);
+}
+
 .speedchat-status-badge {
   padding: 4px 8px;
   border-radius: 999px;
