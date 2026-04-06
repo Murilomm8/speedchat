@@ -46,6 +46,8 @@
   let suppressObserverUntil = 0;
   let lastStreamingUpdateAt = 0;
   let lastAppliedSignature = '';
+  let conversationRoot = null;
+  let lastObservedMessageCount = 0;
 
   const STREAMING_UPDATE_INTERVAL_MS = 1200;
 
@@ -74,17 +76,29 @@
     return Boolean(node.querySelector('article, [data-message-author-role], [data-testid*="conversation"], [data-testid*="message"]'));
   };
 
+  const resolveConversationRoot = () => {
+    if (conversationRoot && conversationRoot.isConnected) {
+      return conversationRoot;
+    }
+
+    const candidates = Array.from(document.querySelectorAll('main, [role="main"], [data-testid*="conversation"]'));
+    conversationRoot = candidates.find((node) => node.querySelector('article, [data-message-id], [data-testid*="conversation-turn"]')) || document.body;
+    return conversationRoot;
+  };
+
   const getMessageBlocks = () => {
-    const primary = Array.from(document.querySelectorAll('article[data-testid]')).filter(
-      (article) => article.isConnected && (article.textContent || '').trim().length > 0
+    const root = resolveConversationRoot();
+
+    const primary = Array.from(root.querySelectorAll('article[data-testid], [data-testid*="conversation-turn"], [data-message-id]')).filter(
+      (article) => article.isConnected && !article.closest(`#${PANEL_ID}`) && !article.closest(`#${LICENSE_PANEL_ID}`)
     );
 
     if (primary.length >= 2) {
       return primary;
     }
 
-    const allArticles = Array.from(document.querySelectorAll('article')).filter(
-      (article) => article.isConnected && (article.textContent || '').trim().length > 0
+    const allArticles = Array.from(root.querySelectorAll('article')).filter(
+      (article) => article.isConnected && !article.closest(`#${PANEL_ID}`) && !article.closest(`#${LICENSE_PANEL_ID}`)
     );
 
     if (allArticles.length >= 2) {
@@ -92,8 +106,8 @@
     }
 
     return Array.from(
-      document.querySelectorAll('[data-message-author-role], [data-testid*="conversation"], [data-testid*="message"]')
-    ).filter((node) => node.isConnected && (node.textContent || '').trim().length > 0);
+      root.querySelectorAll('[data-message-author-role], [data-testid*="conversation"], [data-testid*="message"], [data-message-id]')
+    ).filter((node) => node.isConnected && !node.closest(`#${PANEL_ID}`) && !node.closest(`#${LICENSE_PANEL_ID}`));
   };
 
   const updatePanelUI = () => {
@@ -597,6 +611,8 @@
       observer.disconnect();
     }
 
+    const root = resolveConversationRoot();
+
     observer = new MutationObserver((mutations) => {
       if (Date.now() < suppressObserverUntil) {
         return;
@@ -627,6 +643,10 @@
       });
 
       if (relevant) {
+        const currentCount = getMessageBlocks().length;
+        const countChanged = currentCount !== lastObservedMessageCount;
+        lastObservedMessageCount = currentCount;
+
         if (isResponseStreaming()) {
           const now = Date.now();
           if (now - lastStreamingUpdateAt < STREAMING_UPDATE_INTERVAL_MS) {
@@ -635,12 +655,16 @@
           lastStreamingUpdateAt = now;
         }
 
+        if (!countChanged && !isResponseStreaming()) {
+          return;
+        }
+
         ensurePanelMounted();
         scheduleUpdate();
       }
     });
 
-    observer.observe(document.body, {
+    observer.observe(root || document.body, {
       childList: true,
       subtree: true,
       attributes: false
