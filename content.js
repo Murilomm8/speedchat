@@ -47,7 +47,8 @@
   let lastStreamingUpdateAt = 0;
   let lastAppliedSignature = '';
   let conversationRoot = null;
-  let lastObservedMessageCount = 0;
+  let lastMessageScanAt = 0;
+  let lastMessageBlocks = [];
 
   const STREAMING_UPDATE_INTERVAL_MS = 1200;
 
@@ -87,6 +88,11 @@
   };
 
   const getMessageBlocks = () => {
+    const now = Date.now();
+    if (now - lastMessageScanAt < 250 && lastMessageBlocks.length > 0) {
+      return lastMessageBlocks.filter((node) => node.isConnected);
+    }
+
     const root = resolveConversationRoot();
 
     const primary = Array.from(root.querySelectorAll('article[data-testid], [data-testid*="conversation-turn"], [data-message-id]')).filter(
@@ -94,6 +100,8 @@
     );
 
     if (primary.length >= 2) {
+      lastMessageScanAt = now;
+      lastMessageBlocks = primary;
       return primary;
     }
 
@@ -102,12 +110,18 @@
     );
 
     if (allArticles.length >= 2) {
+      lastMessageScanAt = now;
+      lastMessageBlocks = allArticles;
       return allArticles;
     }
 
-    return Array.from(
+    const fallback = Array.from(
       root.querySelectorAll('[data-message-author-role], [data-testid*="conversation"], [data-testid*="message"], [data-message-id]')
     ).filter((node) => node.isConnected && !node.closest(`#${PANEL_ID}`) && !node.closest(`#${LICENSE_PANEL_ID}`));
+
+    lastMessageScanAt = now;
+    lastMessageBlocks = fallback;
+    return fallback;
   };
 
   const updatePanelUI = () => {
@@ -216,6 +230,7 @@
     }
 
     currentRenderedCount = messages.length;
+    lastMessageBlocks = messages;
 
     if (appState === 'BLOCKED') {
       for (let i = 0; i < messages.length; i += 1) {
@@ -292,10 +307,12 @@
         window.cancelAnimationFrame(rafId);
       }
 
+      lastMessageScanAt = 0;
+
       rafId = window.requestAnimationFrame(() => {
         hideOlderMessages();
       });
-    }, 80);
+    }, 220);
   };
 
   const setSpeedMode = async (enabled) => {
@@ -643,10 +660,6 @@
       });
 
       if (relevant) {
-        const currentCount = getMessageBlocks().length;
-        const countChanged = currentCount !== lastObservedMessageCount;
-        lastObservedMessageCount = currentCount;
-
         if (isResponseStreaming()) {
           const now = Date.now();
           if (now - lastStreamingUpdateAt < STREAMING_UPDATE_INTERVAL_MS) {
@@ -655,9 +668,7 @@
           lastStreamingUpdateAt = now;
         }
 
-        if (!countChanged && !isResponseStreaming()) {
-          return;
-        }
+        lastMessageScanAt = 0;
 
         ensurePanelMounted();
         scheduleUpdate();
